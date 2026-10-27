@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LogicQuest Tetris – Learn Symbolic Logic</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#e6e4f3;--ink:#14122b;--panel:#fff;--muted:#4a4770;--line:#b9b5dd;--accent:#6a2fd6;--ok:#12703a;--bad:#b42318;--warn:#8a5a00}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b0a1a;--ink:#ecebff;--panel:#16143a;--muted:#a9a6d6;--line:#34306b;--accent:#b48cff;--ok:#6be08f;--bad:#ff8a7a;--warn:#ffd166}}
+:root[data-theme="dark"]{--bg:#0b0a1a;--ink:#ecebff;--panel:#16143a;--muted:#a9a6d6;--line:#34306b;--accent:#b48cff;--ok:#6be08f;--bad:#ff8a7a;--warn:#ffd166}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Segoe UI",system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;padding:14px 18px;background:#05040f;color:#fff;border-bottom:4px solid #6a2fd6}
+h1,#lessonTitle,#status,#levels button,#controls button{font-family:"Press Start 2P","Courier New",monospace}
+h1{margin:0;font-size:1.05rem;line-height:1.3}
+h1 i{font-style:normal;display:inline-block;width:.9em;height:.9em;margin-right:2px;vertical-align:-1px}
+#levels{display:flex;gap:8px;flex-wrap:wrap}
+#levels button{font-size:.62rem;color:#fff;background:transparent;border:2px solid #ffffff80;padding:8px 10px;cursor:pointer}
+#levels button.active{background:#f0f000;color:#05040f;border-color:#f0f000}
+#levels button:disabled{opacity:.35;cursor:not-allowed}
+main{display:grid;grid-template-columns:minmax(0,640px) minmax(260px,1fr);gap:20px;max-width:1100px;margin:0 auto;padding:18px}
+@media (max-width:820px){main{grid-template-columns:1fr;padding:12px}}
+#status{display:flex;justify-content:space-between;font-size:.65rem;margin-bottom:10px;color:var(--muted)}
+#stage{background:#05040f;border:4px solid var(--line);width:100%;max-width:600px;overflow:hidden}
+#controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+#controls button{font-size:.62rem;padding:12px 14px;border:3px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+#controls button.secondary{background:transparent;color:var(--accent)}
+button:focus-visible{outline:3px solid #f0a000;outline-offset:2px}
+#feedback{min-height:3.2em;margin:12px 0 0;font-weight:600}
+#feedback.ok{color:var(--ok)}#feedback.bad{color:var(--bad)}#feedback.hint,#feedback.warn{color:var(--warn)}
+#tutor{background:var(--panel);border-left:6px solid #00f0f0;padding:16px 20px;align-self:start}
+#lessonTitle{margin:0 0 10px;font-size:.8rem;line-height:1.5}
+#tutor p,#tutor ul{margin:8px 0}
+#tutor table{border-collapse:collapse;margin:8px 0}
+#tutor th,#tutor td{border:1px solid var(--line);padding:3px 10px;text-align:center}
+#tutor code{background:var(--line);padding:1px 5px}
+</style>
+</head>
+<body>
+<header>
+  <h1><i style="background:#00f0f0"></i><i style="background:#f0f000"></i><i style="background:#a000f0"></i><i style="background:#f00000"></i> LOGICQUEST</h1>
+  <nav id="levels" aria-label="Levels"></nav>
+</header>
+<main>
+  <section>
+    <div id="status"><span id="qcount"></span><span id="score"></span></div>
+    <div id="stage"></div>
+    <div id="controls">
+      <button id="check">CHECK</button>
+      <button id="hint" class="secondary">HINT</button>
+      <button id="next" class="secondary" hidden>NEXT</button>
+    </div>
+    <p id="feedback" role="status" aria-live="polite"></p>
+  </section>
+  <aside id="tutor"><h2 id="lessonTitle"></h2><div id="lesson"></div></aside>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/konva@9.3.6/konva.min.js"></script>
+<script>
+/* LogicQuest Tetris – symbolic logic trainer (Konva + vanilla JS) */
+const W=600,H=330,FONT='ui-monospace,Menlo,Consolas,"Courier New",monospace';
+const COL={chalk:'#ecebff',dim:'#8d8ac4',ok:'#00f000',bad:'#f00000'};
+const PIECES=['#00f0f0','#f0f000','#a000f0','#00f000','#f00000','#2f4bff','#f0a000'];
+const N=5,PASS=4;
+const $=id=>document.getElementById(id);
+const rnd=()=>Math.random()<.5;
+const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]]}return b};
+
+/* ---- Levels 1-2: evaluate a statement ---- */
+const imp=(a,b)=>!a||b,iff=(a,b)=>a===b;
+const POOL1=[['P ∧ Q',(p,q)=>p&&q],['P ∨ Q',(p,q)=>p||q],['¬P',p=>!p],['¬P ∧ Q',(p,q)=>!p&&q],['P ∨ ¬Q',(p,q)=>p||!q],['¬(P ∧ Q)',(p,q)=>!(p&&q)]];
+const POOL2=[['P → Q',(p,q)=>imp(p,q)],['Q → P',(p,q)=>imp(q,p)],['¬P → Q',(p,q)=>imp(!p,q)],['P ↔ Q',(p,q)=>iff(p,q)],['¬(P → Q)',(p,q)=>!imp(p,q)],['(P ∧ Q) → R',(p,q,r)=>imp(p&&q,r)],['P → (Q ∨ R)',(p,q,r)=>imp(p,q||r)],['(P ↔ Q) ∧ R',(p,q,r)=>iff(p,q)&&r]];
+const makeEval=(pool,hint)=>()=>shuffle(pool).slice(0,N).map(([s,f])=>{
+  const v={P:rnd(),Q:rnd(),R:rnd()},a=f(v.P,v.Q,v.R),vars=['P','Q','R'].filter(x=>s.includes(x));
+  const sub=s.replace(/[PQR]/g,m=>v[m]?'T':'F'),A=a?'TRUE':'FALSE';
+  return{prompt:'Is this statement TRUE or FALSE?',lines:[{t:s,s:38},{t:vars.map(x=>x+' = '+(v[x]?'TRUE':'FALSE')).join('    '),s:20,c:COL.dim}],options:['TRUE','FALSE'],answer:A,hint,explain:`Replace the letters: ${sub}. Result: ${A}.`};
+});
+
+/* ---- Levels 3-4: question banks ---- */
+const L=a=>a.map(t=>({t,s:26})),ther={t:'∴  ?',s:26,c:COL.dim};
+const BANK3=[
+ [['P → Q','P'],'Q',['Q','¬Q','¬P'],'If “P → Q” and P are both true, Q is forced to be true.','Modus Ponens: from P → Q and P, conclude Q.'],
+ [['P → Q','¬Q'],'¬P',['¬P','Q','P'],'If the “then” part is false, the “if” part cannot be true.','Modus Tollens: from P → Q and ¬Q, conclude ¬P.'],
+ [['P ∨ Q','¬P'],'Q',['Q','¬Q','P ∧ Q'],'One of the two is true, and it is not P.','Disjunctive Syllogism: from P ∨ Q and ¬P, conclude Q.'],
+ [['P → Q','Q → R'],'P → R',['P → R','R → P','P ∧ R'],'Chain them: P leads to Q, and Q leads to R.','Hypothetical Syllogism: from P → Q and Q → R, conclude P → R.'],
+ [['R ∧ S'],'R',['R','¬S','R → ¬S'],'An AND is only true when both parts are true, so each part is true alone.','Simplification: from R ∧ S, conclude R.'],
+ [['¬P → Q','¬P'],'Q',['Q','P','¬Q'],'The “if” part here is ¬P, and it is given as true.','Modus Ponens again: the antecedent ¬P is given, so Q follows.']];
+const make3=()=>shuffle(BANK3).slice(0,N).map(([p,a,o,hint,explain])=>({prompt:'What conclusion follows from these premises?',lines:[...L(p),ther],options:shuffle(o),answer:a,hint,explain}));
+const eq=(f,a,o,hint,explain)=>({prompt:'Which statement is equivalent to:',lines:L([f]),options:shuffle(o),answer:a,hint,explain});
+const val=(p,c,a,hint,explain)=>({prompt:'Is this argument VALID or INVALID?',lines:[...L(p),{t:'∴  '+c,s:26}],options:['VALID','INVALID'],answer:a,hint,explain});
+const make4=()=>shuffle([
+ eq('¬(P ∧ Q)','¬P ∨ ¬Q',['¬P ∨ ¬Q','¬P ∧ ¬Q','P ∨ Q'],'De Morgan: negating an AND flips it to an OR and negates each part.','De Morgan’s law: ¬(P ∧ Q) ≡ ¬P ∨ ¬Q.'),
+ eq('¬(P ∨ Q)','¬P ∧ ¬Q',['¬P ∧ ¬Q','¬P ∨ ¬Q','¬P ∧ Q'],'De Morgan: negating an OR flips it to an AND and negates each part.','De Morgan’s law: ¬(P ∨ Q) ≡ ¬P ∧ ¬Q.'),
+ eq('P → Q','¬P ∨ Q',['¬P ∨ Q','P ∨ ¬Q','Q → P'],'A conditional fails only when P is true and Q is false. Which OR fails in exactly that case?','Material implication: P → Q ≡ ¬P ∨ Q.'),
+ eq('P → Q','¬Q → ¬P',['¬Q → ¬P','¬P → ¬Q','Q → P'],'Flip the direction and negate both sides.','Contrapositive: P → Q ≡ ¬Q → ¬P. (¬P → ¬Q is the inverse, which is not equivalent.)'),
+ val(['P → Q','Q'],'P','INVALID','Try P = FALSE and Q = TRUE. Are both premises still true?','Affirming the consequent is a fallacy: with P false and Q true, both premises hold but the conclusion fails.'),
+ val(['P → Q','¬P'],'¬Q','INVALID','Try P = FALSE and Q = TRUE.','Denying the antecedent is a fallacy: Q can still be true when P is false.'),
+ val(['P → Q','Q → R','¬R'],'¬P','VALID','Work backwards: ¬R gives ¬Q, and ¬Q gives ¬P.','Modus Tollens twice: ¬R ⇒ ¬Q ⇒ ¬P. No counterexample exists.')]).slice(0,N);
+
+/* ---- Tutor content ---- */
+const TT=(h,r)=>`<table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${r.map(x=>`<tr>${x.map(y=>`<td>${y}</td>`).join('')}</tr>`).join('')}</table>`;
+const LEVELS=[
+ {name:'LEVEL 1',title:'LEVEL 1: AND, OR, NOT',make:makeEval(POOL1,'Replace each letter with TRUE or FALSE, then apply NOT first, then AND / OR.'),
+  lesson:`<p>Statements are letters like <code>P</code> and <code>Q</code>, each TRUE or FALSE. Swap in the values, then work from the inside out.</p><ul><li><code>¬</code> NOT flips the value.</li><li><code>∧</code> AND is true only if both sides are true.</li><li><code>∨</code> OR is false only if both sides are false.</li></ul>${TT(['P','Q','P ∧ Q','P ∨ Q'],[['T','T','T','T'],['T','F','F','T'],['F','T','F','T'],['F','F','F','F']])}<p>Drag a block into the well (or tap it), then press CHECK.</p>`},
+ {name:'LEVEL 2',title:'LEVEL 2: IF … THEN',make:makeEval(POOL2,'Solve the brackets first. Remember: P → Q is only FALSE when P is TRUE and Q is FALSE.'),
+  lesson:`<p><code>P → Q</code> reads “if P then Q”. It is a promise, broken only when P is true and Q is false.</p><p><code>P ↔ Q</code> means “P exactly when Q”: true when both have the same value.</p>${TT(['P','Q','P → Q','P ↔ Q'],[['T','T','T','T'],['T','F','F','F'],['F','T','T','F'],['F','F','T','T']])}<p>Order of work: brackets, then ¬, then ∧ and ∨, then → and ↔.</p>`},
+ {name:'LEVEL 3',title:'LEVEL 3: INFERENCE RULES',make:make3,
+  lesson:`<p>An argument has premises (given as true) and a conclusion that must follow. Learn these patterns:</p><ul><li><b>Modus Ponens:</b> P → Q, P ⊢ Q</li><li><b>Modus Tollens:</b> P → Q, ¬Q ⊢ ¬P</li><li><b>Disjunctive Syllogism:</b> P ∨ Q, ¬P ⊢ Q</li><li><b>Hypothetical Syllogism:</b> P → Q, Q → R ⊢ P → R</li><li><b>Simplification:</b> P ∧ Q ⊢ P</li></ul><p><code>∴</code> means “therefore”. Pick the conclusion the premises guarantee.</p>`},
+ {name:'LEVEL 4',title:'LEVEL 4: EQUIVALENCE AND VALIDITY',make:make4,
+  lesson:`<p>Two statements are <b>equivalent</b> if they are true in exactly the same cases.</p><ul><li>De Morgan: ¬(P ∧ Q) ≡ ¬P ∨ ¬Q, and ¬(P ∨ Q) ≡ ¬P ∧ ¬Q</li><li>Implication: P → Q ≡ ¬P ∨ Q</li><li>Contrapositive: P → Q ≡ ¬Q → ¬P</li></ul><p>An argument is <b>valid</b> if no case makes every premise true and the conclusion false. Find one such case (a counterexample) and it is invalid.</p><p>Watch for two classic fallacies: affirming the consequent and denying the antecedent.</p>`}];
+
+/* ---- State & progress ---- */
+const state={level:0,qi:0,score:0,qs:[],chosen:null,solved:false,tries:0,phase:'question',passed:false,rows:[]};
+let unlocked=1;
+try{unlocked=Math.min(4,Math.max(1,+localStorage.getItem('lqt.unlocked')||1))}catch(e){}
+const save=()=>{try{localStorage.setItem('lqt.unlocked',unlocked)}catch(e){}};
+
+/* ---- Konva board ---- */
+const stage=new Konva.Stage({container:'stage',width:W,height:H}),layer=new Konva.Layer();stage.add(layer);
+function fit(){const w=Math.min($('stage').clientWidth||W,W),s=w/W;stage.width(W*s);stage.height(H*s);stage.scale({x:s,y:s})}
+addEventListener('resize',fit);
+const txt=(t,y,size,fill,bold)=>new Konva.Text({x:0,y,width:W,align:'center',text:t,fontSize:size,fontFamily:FONT,fontStyle:bold?'bold':'normal',fill});
+const SLOT={w:260,h:60,x:(W-260)/2,y:200},CH=44;
+let slotRect,cells=[];
+
+function block(x,y,w,h,c){ /* beveled Tetris block */
+  const g=new Konva.Group({x,y});
+  g.add(new Konva.Rect({width:w,height:h,fill:c,stroke:'#05040f',strokeWidth:3}));
+  g.add(new Konva.Rect({x:3,y:3,width:w-6,height:5,fill:'#fff',opacity:.4}));
+  g.add(new Konva.Rect({x:3,y:h-8,width:w-6,height:5,fill:'#000',opacity:.25}));
+  return g;
+}
+function drawLines(){ /* progress: one block per question, like lines in the stack */
+  cells=[];const x0=(W-N*26)/2;
+  for(let i=0;i<N;i++){
+    const c=state.rows[i];
+    const cell=c?block(x0+i*26,10,22,22,c):new Konva.Rect({x:x0+i*26,y:10,width:22,height:22,stroke:COL.dim,strokeWidth:2,dash:[3,3]});
+    layer.add(cell);cells.push(cell);
+  }
+}
+function home(chip){if(state.chosen===chip)state.chosen=null;chip.to({x:chip.getAttr('hx'),y:chip.getAttr('hy'),duration:.15});slotRect.stroke(COL.dim)}
+function place(chip){
+  if(state.solved)return;
+  if(state.chosen&&state.chosen!==chip)home(state.chosen);
+  state.chosen=chip;slotRect.stroke('#f0f000');
+  chip.to({x:SLOT.x+(SLOT.w-chip.getAttr('w'))/2,y:SLOT.y+(SLOT.h-CH)/2,duration:.12});
+}
+function drawQuestion(q){
+  layer.destroyChildren();drawLines();
+  layer.add(txt(q.prompt,44,15,COL.dim));
+  let y=72;q.lines.forEach(l=>{layer.add(txt(l.t,y,l.s||26,l.c||COL.chalk,(l.s||0)>=34));y+=(l.s||26)+10});
+  slotRect=new Konva.Rect({x:SLOT.x,y:SLOT.y,width:SLOT.w,height:SLOT.h,fill:'#0b0a22',stroke:COL.dim,strokeWidth:3});
+  layer.add(slotRect);
+  for(let gx=SLOT.x+20;gx<SLOT.x+SLOT.w;gx+=20)layer.add(new Konva.Line({points:[gx,SLOT.y,gx,SLOT.y+SLOT.h],stroke:'#1d1b4a',strokeWidth:1}));
+  for(let gy=SLOT.y+20;gy<SLOT.y+SLOT.h;gy+=20)layer.add(new Konva.Line({points:[SLOT.x,gy,SLOT.x+SLOT.w,gy],stroke:'#1d1b4a',strokeWidth:1}));
+  layer.add(new Konva.Text({x:SLOT.x,y:SLOT.y+SLOT.h/2-7,width:SLOT.w,align:'center',text:'DROP HERE',fontSize:13,fontFamily:FONT,fill:'#34306b'}));
+  const ws=q.options.map(o=>Math.max(110,new Konva.Text({text:o,fontSize:22,fontFamily:FONT,fontStyle:'bold'}).width()+40)),gap=16;
+  let x=(W-ws.reduce((a,b)=>a+b,0)-gap*(ws.length-1))/2;
+  q.options.forEach((label,i)=>{
+    const w=ws[i],hy=272,col=PIECES[(state.qi*2+i*3)%7];
+    const chip=new Konva.Group({x,y:hy,draggable:true,name:'chip'});
+    chip.add(block(0,0,w,CH,col));
+    chip.add(new Konva.Text({width:w,height:CH,align:'center',verticalAlign:'middle',text:label,fontSize:22,fontStyle:'bold',fontFamily:FONT,fill:'#05040f'}));
+    chip.setAttrs({label,w,hx:x,hy,col});
+    chip.on('dragstart',()=>{chip.moveToTop();if(state.chosen===chip){state.chosen=null;slotRect.stroke(COL.dim)}});
+    chip.on('dragend',()=>{const cx=chip.x()+w/2,cy=chip.y()+CH/2;(cx>SLOT.x-20&&cx<SLOT.x+SLOT.w+20&&cy>SLOT.y-20&&cy<SLOT.y+SLOT.h+20)?place(chip):home(chip)});
+    chip.on('click tap',()=>state.chosen===chip?home(chip):place(chip));
+    chip.on('mouseenter',()=>stage.container().style.cursor='grab');
+    chip.on('mouseleave',()=>stage.container().style.cursor='default');
+    layer.add(chip);x+=w+gap;
+  });
+}
+function drawResult(){
+  layer.destroyChildren();drawLines();
+  const ok=state.passed,last=state.level===LEVELS.length-1;
+  layer.add(txt(ok?(last?'ALL CLEAR!':'LEVEL CLEAR!'):'STACK TOO HIGH',90,34,ok?COL.ok:'#f0a000',true));
+  layer.add(txt(`${state.score} of ${N} right on the first try`,150,20,COL.chalk));
+  layer.add(txt(ok?(last?'Replay any level to keep practising.':'The next level is unlocked.'):`You need ${PASS} to unlock the next level. Check the notes and retry.`,195,15,COL.dim));
+}
+
+/* ---- Flow ---- */
+const say=(m,c)=>{$('feedback').textContent=m;$('feedback').className=c||''};
+function buttons(m){$('check').hidden=m!=='question';$('hint').hidden=m!=='question';$('next').hidden=m==='question'}
+function nav(){
+  $('levels').innerHTML='';
+  LEVELS.forEach((lv,i)=>{const b=document.createElement('button');b.textContent=lv.name;b.disabled=i>=unlocked;b.className=i===state.level?'active':'';b.onclick=()=>start(i);$('levels').appendChild(b)});
+}
+function start(i){
+  Object.assign(state,{level:i,qi:0,score:0,rows:[],qs:LEVELS[i].make()});
+  $('lessonTitle').textContent=LEVELS[i].title;$('lesson').innerHTML=LEVELS[i].lesson;nav();show();
+}
+function show(){
+  Object.assign(state,{chosen:null,solved:false,tries:0,phase:'question'});
+  $('qcount').textContent=`QUESTION ${state.qi+1}/${state.qs.length}`;$('score').textContent=`SCORE ${state.score}`;
+  say('');buttons('question');drawQuestion(state.qs[state.qi]);
+}
+function result(){
+  state.phase='result';state.passed=state.score>=PASS;
+  if(state.passed&&state.level+2>unlocked&&state.level<LEVELS.length-1){unlocked=state.level+2;save()}
+  nav();say('');buttons('result');
+  $('next').textContent=state.passed?(state.level===LEVELS.length-1?'REPLAY':'NEXT LEVEL'):'RETRY';
+  drawResult();
+}
+$('check').onclick=()=>{
+  if(state.solved||state.phase!=='question')return;
+  if(!state.chosen)return say('Drag a block into the well first, or tap one.','warn');
+  const q=state.qs[state.qi],chip=state.chosen;
+  if(chip.getAttr('label')===q.answer){
+    state.solved=true;if(state.tries===0)state.score++;
+    state.rows[state.qi]=state.tries===0?chip.getAttr('col'):'#7a779e';
+    layer.find('.chip').forEach(c=>c.draggable(false));
+    chip.to({y:chip.y()+6,duration:.1});
+    cells[state.qi].destroy();layer.add(block((W-N*26)/2+state.qi*26,10,22,22,state.rows[state.qi]));
+    $('score').textContent=`SCORE ${state.score}`;say('Locked in! '+q.explain,'ok');
+    $('next').hidden=false;$('next').textContent=state.qi===state.qs.length-1?'RESULTS':'NEXT';
+  }else{
+    state.tries++;home(chip);
+    say(state.tries>=2?'Not quite. Hint: '+q.hint:'Not quite. Try again, or press HINT.','bad');
+  }
+};
+$('hint').onclick=()=>{if(state.phase==='question'&&!state.solved)say('Hint: '+state.qs[state.qi].hint,'hint')};
+$('next').onclick=()=>{
+  if(state.phase==='result')return start(state.passed?(state.level+1)%LEVELS.length:state.level);
+  state.qi<state.qs.length-1?(state.qi++,show()):result();
+};
+fit();start(0);
+</script>
+</body>
+</html>
